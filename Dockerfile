@@ -1,31 +1,34 @@
-FROM ubuntu:22.04
-WORKDIR /fortressonesv
-EXPOSE 27500/udp
-#ARG FTE_CONFIG=fortressone
-RUN apt-get update \
- && apt-get install -y \
+FROM alpine:latest AS build
+ARG FTE_CONFIG=fortressone
+RUN apk update \
+ && apk upgrade \
+ && apk add --update \
     curl \
     gcc \
     git \
-    libgnutls28-dev \
+    gnutls-dev \
     libpng-dev \
     make \
-    mesa-common-dev \
+    mesa \
+    musl-dev \
     subversion \
-    zlib1g-dev \
- && rm -rf /var/lib/apt/lists/*
-COPY . /fortressonesv/
-RUN cd /fortressonesv/fortress/dats/ \
+    zlib
+RUN git clone https://github.com/FortressOne/fteqw.git
+WORKDIR fteqw/engine
+RUN make sv-rel -j$(nproc)
+RUN mkdir dats && cd dats \
  && curl \
     --location \
     --remote-name-all \
-    http://github.com/FortressOne/server-qwprogs/releases/latest/download/{qwprogs,csprogs,menu}.dat \
- && cd /fortressonesv/
-RUN git clone https://github.com/fte-team/fteqw.git
-WORKDIR fteqw/engine
-RUN make sv-rel -j$(nproc)
-RUN mv release/fteqw-sv /fortressonesv/fortressone-sv
+    https://github.com/FortressOne/server-qwprogs/releases/latest/download/{qwprogs,csprogs,menu}.dat
+
+FROM alpine:latest
+RUN apk update && apk upgrade
+COPY . /fortressonesv/
+COPY --from=build /fteqw/engine/release/fortressone-sv /fortressonesv/fortressone-sv
+COPY --from=build /fteqw/engine/dats /fortressonesv/fortress/dats
 WORKDIR /fortressonesv
+EXPOSE 27500/udp
 ENTRYPOINT ["/fortressonesv/fortressone-sv"]
 CMD ["-ip", "localhost", \
      "+set", "hostname", "FortressOne", \
